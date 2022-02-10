@@ -3,11 +3,12 @@ package fast
 import (
 	"errors"
 	"io"
+	"net/http"
 	"strconv"
 	"sync"
 	"time"
 
-	"github.com/ddo/pick-json"
+	pickjson "github.com/ddo/pick-json"
 	"github.com/ddo/rq"
 	"github.com/ddo/rq/client"
 	"gopkg.in/ddo/go-dlog.v2"
@@ -38,7 +39,8 @@ type Fast struct {
 	url      string
 	urlCount int
 
-	client *client.Client
+	client         *client.Client
+	downloadclient *client.Client
 }
 
 // New creates empty Fast instance with a http client
@@ -47,11 +49,25 @@ func New() *Fast {
 	defaultRq := rq.Get(endpoint)
 	defaultRq.Set("User-Agent", userAgent)
 
-	return &Fast{
+	result := &Fast{
 		client: client.New(&client.Option{
 			DefaultRq: defaultRq,
 		}),
 	}
+	result.downloadclient = result.client
+	return result
+}
+
+func NewWithTransport(transport http.RoundTripper) *Fast {
+	f := New()
+	defaultRq := rq.Get(endpoint)
+	defaultRq.Set("User-Agent", userAgent)
+
+	f.downloadclient = client.New(&client.Option{
+		DefaultRq: defaultRq,
+		Transport: transport,
+	})
+	return f
 }
 
 // Init inits token and url
@@ -107,7 +123,7 @@ func (f *Fast) GetUrls() (urls []string, err error) {
 // or done channel receive
 func (f *Fast) download(url string, byteLenChan chan<- int64, done <-chan struct{}) (err error) {
 	r := rq.Get(url)
-	_, res, err := f.client.Send(r, false)
+	_, res, err := f.downloadclient.Send(r, false)
 	if err != nil {
 		err = errInternet
 		return
